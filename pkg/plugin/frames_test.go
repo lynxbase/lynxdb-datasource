@@ -131,6 +131,29 @@ func TestColumnsRowsToFrameTable(t *testing.T) {
 	}
 }
 
+func TestLintsToNotices(t *testing.T) {
+	notices := lintsToNotices([]queryLint{
+		{Code: "L035", Message: "scans everything", Severity: "warning"},
+		{Code: "L013", Message: "use count()", Severity: "notice"},
+		{Message: "bad", Severity: "error"},
+	})
+	if len(notices) != 3 {
+		t.Fatalf("expected 3 notices, got %d", len(notices))
+	}
+	if notices[0].Severity != data.NoticeSeverityWarning {
+		t.Errorf("notice[0] severity = %v, want warning", notices[0].Severity)
+	}
+	if notices[0].Text != "L035: scans everything" {
+		t.Errorf("notice[0] text = %q", notices[0].Text)
+	}
+	if notices[1].Severity != data.NoticeSeverityInfo {
+		t.Errorf("notice[1] severity = %v, want info", notices[1].Severity)
+	}
+	if notices[2].Severity != data.NoticeSeverityError {
+		t.Errorf("notice[2] severity = %v, want error", notices[2].Severity)
+	}
+}
+
 func TestEpochToTime(t *testing.T) {
 	want := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
 	cases := []float64{

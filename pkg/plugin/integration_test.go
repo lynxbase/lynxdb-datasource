@@ -64,7 +64,11 @@ func TestIntegrationQueryEvents(t *testing.T) {
 	if len(f.Fields) != 5 {
 		t.Fatalf("expected 5 log fields, got %d", len(f.Fields))
 	}
-	t.Logf("events frame rows: %d", f.Fields[0].Len())
+	// A bare `*` query reliably returns the L035 "scans everything" lint.
+	if f.Meta == nil || len(f.Meta.Notices) == 0 {
+		t.Errorf("expected advisory notices on the frame")
+	}
+	t.Logf("events frame rows: %d, notices: %d", f.Fields[0].Len(), len(f.Meta.Notices))
 }
 
 func TestIntegrationTimechartGrouped(t *testing.T) {
