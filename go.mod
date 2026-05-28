@@ -1,4 +1,4 @@
-module github.com/lynxbase/lynxdb
+module github.com/lynxbase/lynxdb-datasource
 
 go 1.26.3
 

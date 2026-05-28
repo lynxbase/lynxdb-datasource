@@ -5,7 +5,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/datasource"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
-	"github.com/lynxbase/lynxdb/pkg/plugin"
+	"github.com/lynxbase/lynxdb-datasource/pkg/plugin"
 )
 
 func main() {
