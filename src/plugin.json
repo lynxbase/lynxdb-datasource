@@ -5,6 +5,7 @@
   "id": "lynxbase-lynxdb-datasource",
   "metrics": true,
   "logs": true,
+  "streaming": true,
   "backend": true,
   "executable": "gpx_lynxdb",
   "info": {
@@ -14,8 +15,8 @@
     },
     "keywords": ["datasource"],
     "logos": {
-      "small": "img/logo.svg",
-      "large": "img/logo.svg"
+      "small": "img/logo.png",
+      "large": "img/logo.png"
     },
     "links": [],
     "screenshots": [],

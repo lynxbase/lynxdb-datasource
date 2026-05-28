@@ -1,13 +1,26 @@
 import {
+  AdHocVariableFilter,
   CoreApp,
+  DataQueryResponse,
   DataQueryRequest,
+  DataSourceGetTagValuesOptions,
   DataSourceInstanceSettings,
+  dateTime,
+  LiveChannelScope,
+  LogRowContextOptions,
+  LogRowContextQueryDirection,
+  LogRowModel,
   MetricFindValue,
+  QueryFixAction,
   ScopedVars,
   SupplementaryQueryOptions,
   SupplementaryQueryType,
 } from '@grafana/data';
-import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
+import { DataSourceWithBackend, getGrafanaLiveSrv, getTemplateSrv } from '@grafana/runtime';
+import { Observable, lastValueFrom, merge } from 'rxjs';
+
+import { annotationSupport } from './annotations';
+import { appendWhere, applyAdHocFilters, escapeValue, filterClause } from './queryFilters';
 
 import {
   DEFAULT_QUERY,
@@ -23,16 +36,50 @@ import {
 export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<LynxDataSourceOptions>) {
     super(instanceSettings);
+    this.annotations = annotationSupport;
   }
 
   getDefaultQuery(_: CoreApp): Partial<LynxQuery> {
     return DEFAULT_QUERY;
   }
 
-  applyTemplateVariables(query: LynxQuery, scopedVars: ScopedVars): LynxQuery {
+  // query routes Explore live-tail requests to a Grafana Live stream backed by
+  // the plugin RunStream handler; everything else uses the standard backend query.
+  query(request: DataQueryRequest<LynxQuery>): Observable<DataQueryResponse> {
+    if (request.liveStreaming) {
+      return this.tailQuery(request);
+    }
+    return super.query(request);
+  }
+
+  private tailQuery(request: DataQueryRequest<LynxQuery>): Observable<DataQueryResponse> {
+    const live = getGrafanaLiveSrv();
+    if (!live) {
+      return super.query(request);
+    }
+
+    const streams = request.targets
+      .filter((target) => this.filterQuery(target))
+      .map((target) => {
+        const q = this.applyTemplateVariables(target, request.scopedVars);
+        return live.getDataStream({
+          addr: {
+            scope: LiveChannelScope.DataSource,
+            stream: this.uid,
+            path: `tail/${target.refId}/${hashQuery(q.queryText)}`,
+            data: { queryText: q.queryText, queryType: q.queryType, maxLines: q.maxLines },
+          },
+        });
+      });
+
+    return streams.length > 0 ? merge(...streams) : super.query(request);
+  }
+
+  applyTemplateVariables(query: LynxQuery, scopedVars: ScopedVars, filters?: AdHocVariableFilter[]): LynxQuery {
+    const interpolated = query.queryText ? getTemplateSrv().replace(query.queryText, scopedVars) : query.queryText;
     return {
       ...query,
-      queryText: query.queryText ? getTemplateSrv().replace(query.queryText, scopedVars) : query.queryText,
+      queryText: applyAdHocFilters(interpolated, filters) ?? query.queryText,
     };
   }
 
@@ -118,4 +165,98 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
     const values = await this.getFieldValues(field, 1000);
     return values.map((v) => ({ text: String(v.value) }));
   }
+
+  // --- Ad-hoc filters ------------------------------------------------------
+
+  // modifyQuery handles the add/exclude filter actions from the log details view.
+  modifyQuery(query: LynxQuery, action: QueryFixAction): LynxQuery {
+    const key = action.options?.key;
+    if (!key) {
+      return query;
+    }
+    const value = action.options?.value ?? '';
+
+    let clause: string | undefined;
+    if (action.type === 'ADD_FILTER') {
+      clause = filterClause(key, '=', value);
+    } else if (action.type === 'ADD_FILTER_OUT') {
+      clause = filterClause(key, '!=', value);
+    }
+    if (!clause) {
+      return query;
+    }
+    return { ...query, queryText: appendWhere(query.queryText, clause) };
+  }
+
+  // getTagKeys/getTagValues power dashboard ad-hoc filter controls.
+  async getTagKeys(): Promise<MetricFindValue[]> {
+    const fields = await this.getFields();
+    return fields.map((f) => ({ text: f.name }));
+  }
+
+  async getTagValues(options: DataSourceGetTagValuesOptions<LynxQuery>): Promise<MetricFindValue[]> {
+    const values = await this.getFieldValues(options.key, 1000);
+    return values.map((v) => ({ text: String(v.value) }));
+  }
+
+  // --- Log context ---------------------------------------------------------
+
+  // getLogRowContext returns the log lines surrounding a given row, scoped to the
+  // same source when one is present.
+  async getLogRowContext(
+    row: LogRowModel,
+    options?: LogRowContextOptions,
+    _query?: LynxQuery
+  ): Promise<DataQueryResponse> {
+    const limit = options?.limit ?? 50;
+    const windowMs = options?.timeWindowMs ?? 60 * 60 * 1000;
+    const forward = options?.direction === LogRowContextQueryDirection.Forward;
+    const fromMs = forward ? row.timeEpochMs : row.timeEpochMs - windowMs;
+    const toMs = forward ? row.timeEpochMs + windowMs : row.timeEpochMs;
+
+    const target = this.contextTarget(row, limit);
+    return lastValueFrom(super.query(this.contextRequest(target, fromMs, toMs, limit)));
+  }
+
+  // getLogRowContextQuery lets Grafana open the context in a split view.
+  async getLogRowContextQuery(row: LogRowModel, options?: LogRowContextOptions): Promise<LynxQuery | null> {
+    return this.contextTarget(row, options?.limit ?? 50);
+  }
+
+  private contextTarget(row: LogRowModel, limit: number): LynxQuery {
+    const source = row.labels?.['_source'] ?? row.labels?.['source'];
+    return {
+      refId: 'context',
+      queryText: source ? `_source="${escapeValue(source)}"` : '*',
+      queryType: 'logs',
+      maxLines: limit,
+    };
+  }
+
+  private contextRequest(target: LynxQuery, fromMs: number, toMs: number, limit: number): DataQueryRequest<LynxQuery> {
+    const from = dateTime(fromMs);
+    const to = dateTime(toMs);
+    return {
+      requestId: `lynx-context-${fromMs}-${toMs}`,
+      interval: '0',
+      intervalMs: 1,
+      range: { from, to, raw: { from, to } },
+      scopedVars: {},
+      targets: [target],
+      timezone: 'browser',
+      app: CoreApp.Explore,
+      startTime: fromMs,
+      maxDataPoints: limit,
+    } as DataQueryRequest<LynxQuery>;
+  }
+}
+
+// hashQuery produces a short channel-path-safe token so distinct queries on the
+// same refId get distinct live channels.
+function hashQuery(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 33 + text.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
 }

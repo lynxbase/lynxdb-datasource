@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -18,9 +19,10 @@ import (
 // Grafana-managed http.Client so datasource TLS, proxy, and timeout settings
 // are honored, and adds the bearer token on every request.
 type lynxClient struct {
-	httpClient *http.Client
-	baseURL    string
-	token      string
+	httpClient   *http.Client
+	streamClient *http.Client
+	baseURL      string
+	token        string
 }
 
 func newClient(ctx context.Context, settings backend.DataSourceInstanceSettings, token string) (*lynxClient, error) {
@@ -34,11 +36,56 @@ func newClient(ctx context.Context, settings backend.DataSourceInstanceSettings,
 		return nil, fmt.Errorf("new http client: %w", err)
 	}
 
+	// Live tail is a long-lived SSE stream, so the request timeout is removed
+	// for the streaming client while keeping the configured transport.
+	streamOpts := opts
+	timeouts := httpclient.DefaultTimeoutOptions
+	if streamOpts.Timeouts != nil {
+		timeouts = *streamOpts.Timeouts
+	}
+	timeouts.Timeout = 0
+	streamOpts.Timeouts = &timeouts
+	streamCl, err := httpclient.New(streamOpts)
+	if err != nil {
+		return nil, fmt.Errorf("new stream client: %w", err)
+	}
+
 	return &lynxClient{
-		httpClient: cl,
-		baseURL:    strings.TrimRight(settings.URL, "/"),
-		token:      token,
+		httpClient:   cl,
+		streamClient: streamCl,
+		baseURL:      strings.TrimRight(settings.URL, "/"),
+		token:        token,
 	}, nil
+}
+
+// tailStream opens the LynxDB live-tail SSE stream. The caller must close the
+// returned response body.
+func (c *lynxClient) tailStream(ctx context.Context, q, from string, count int) (*http.Response, error) {
+	query := url.Values{}
+	query.Set("q", q)
+	if from != "" {
+		query.Set("from", from)
+	}
+	if count > 0 {
+		query.Set("count", strconv.Itoa(count))
+	}
+
+	req, err := c.newRequest(ctx, http.MethodGet, "/api/v1/tail", query, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("lynxdb tail %s: %s", resp.Status, decodeAPIError(body))
+	}
+	return resp, nil
 }
 
 func (c *lynxClient) newRequest(ctx context.Context, method, path string, query url.Values, body io.Reader) (*http.Request, error) {

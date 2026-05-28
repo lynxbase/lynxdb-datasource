@@ -11,6 +11,8 @@ in Grafana using Lynx Flow / SPL2. This is a backend data source plugin
 - Logs and metrics in one editor: `Logs` renders events in the Explore Logs view;
   `Metrics` renders `timechart` results as time series.
 - Log-volume histogram in Explore, grouped by log level.
+- Live tail in Explore over the LynxDB SSE stream.
+- Annotation queries: log lines become dashboard annotations.
 - Template variables: `fields`, `sources`, and `values(<field>)`.
 - Secure bearer-token auth stored encrypted in `secureJsonData`.
 
