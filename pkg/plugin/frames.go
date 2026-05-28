@@ -73,51 +73,71 @@ func (d *Datasource) eventsToFrame(events []map[string]interface{}) *data.Frame 
 }
 
 // columnsRowsToFrame converts a columns/rows result into a frame. When
-// timeFirst is true the first column becomes a time axis and the remaining
-// columns become numeric series (time-series wide). Otherwise each column type
-// is inferred and the result is a table.
+// timeFirst is true the first column is a time axis: a numeric-only result
+// becomes time-series wide, while a result with a string dimension column
+// (LynxDB returns `timechart ... by field` in long format) is pivoted to wide.
+// When timeFirst is false each column type is inferred and the result is a
+// table.
 func columnsRowsToFrame(columns []string, rows [][]interface{}, timeFirst bool) (*data.Frame, error) {
 	if len(columns) == 0 {
 		return data.NewFrame("response"), nil
 	}
 	ncol := len(columns)
 
-	if timeFirst && ncol >= 1 {
-		times := make([]time.Time, len(rows))
-		series := make([][]*float64, ncol-1)
-		for j := range series {
-			series[j] = make([]*float64, len(rows))
-		}
-		for i, row := range rows {
-			if len(row) > 0 {
-				t, _ := toTime(row[0])
-				times[i] = t
-			}
-			for j := 1; j < ncol && j < len(row); j++ {
-				series[j-1][i] = toFloatPtr(row[j])
-			}
-		}
-		fields := make([]*data.Field, 0, ncol)
-		fields = append(fields, data.NewField(columns[0], nil, times))
-		for j := 1; j < ncol; j++ {
-			fields = append(fields, data.NewField(columns[j], nil, series[j-1]))
-		}
-		frame := data.NewFrame("response", fields...)
-		frame.Meta = &data.FrameMeta{Type: data.FrameTypeTimeSeriesWide}
-		return frame, nil
-	}
-
 	fields := make([]*data.Field, ncol)
 	for j := 0; j < ncol; j++ {
-		col := make([]interface{}, len(rows))
-		for i, row := range rows {
-			if j < len(row) {
-				col[i] = row[j]
-			}
+		col := collectColumn(rows, j)
+		if j == 0 && timeFirst {
+			fields[j] = timeField(columns[0], col)
+			continue
 		}
 		fields[j] = inferField(columns[j], col)
 	}
-	return data.NewFrame("response", fields...), nil
+	frame := data.NewFrame("response", fields...)
+
+	if !timeFirst {
+		return frame, nil
+	}
+
+	hasStringDim := false
+	for j := 1; j < ncol; j++ {
+		if fields[j].Type() == data.FieldTypeNullableString {
+			hasStringDim = true
+			break
+		}
+	}
+
+	if hasStringDim && len(rows) > 0 {
+		if wide, err := data.LongToWide(frame, &data.FillMissing{Mode: data.FillModeNull}); err == nil {
+			return wide, nil
+		}
+		// Grafana also converts timeseries-long frames, so fall back to long.
+		frame.Meta = &data.FrameMeta{Type: data.FrameTypeTimeSeriesLong}
+		return frame, nil
+	}
+
+	frame.Meta = &data.FrameMeta{Type: data.FrameTypeTimeSeriesWide}
+	return frame, nil
+}
+
+func collectColumn(rows [][]interface{}, j int) []interface{} {
+	col := make([]interface{}, len(rows))
+	for i, row := range rows {
+		if j < len(row) {
+			col[i] = row[j]
+		}
+	}
+	return col
+}
+
+func timeField(name string, vals []interface{}) *data.Field {
+	out := make([]time.Time, len(vals))
+	for i, v := range vals {
+		if t, ok := toTime(v); ok {
+			out[i] = t
+		}
+	}
+	return data.NewField(name, nil, out)
 }
 
 // inferField builds a typed, nullable field by classifying its values.

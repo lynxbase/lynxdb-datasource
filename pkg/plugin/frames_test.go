@@ -84,6 +84,34 @@ func TestColumnsRowsToFrameTimechart(t *testing.T) {
 	}
 }
 
+func TestColumnsRowsToFrameTimechartGrouped(t *testing.T) {
+	cols := []string{"_time", "count", "level"}
+	rows := [][]interface{}{
+		{"2026-05-28T10:00:00Z", float64(5), "ERROR"},
+		{"2026-05-28T10:00:00Z", float64(9), "INFO"},
+		{"2026-05-28T10:01:00Z", float64(2), "ERROR"},
+		{"2026-05-28T10:01:00Z", float64(7), "INFO"},
+	}
+
+	frame, err := columnsRowsToFrame(cols, rows, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame.Meta == nil || frame.Meta.Type != data.FrameTypeTimeSeriesWide {
+		t.Fatalf("expected wide frame after pivot, got %+v", frame.Meta)
+	}
+	// One time field plus one value field per level value.
+	if len(frame.Fields) != 3 {
+		t.Fatalf("expected 3 fields (time + 2 levels), got %d", len(frame.Fields))
+	}
+	if frame.Fields[0].Type() != data.FieldTypeTime {
+		t.Errorf("first field type = %v, want time", frame.Fields[0].Type())
+	}
+	if frame.Fields[0].Len() != 2 {
+		t.Errorf("expected 2 time buckets, got %d", frame.Fields[0].Len())
+	}
+}
+
 func TestColumnsRowsToFrameTable(t *testing.T) {
 	cols := []string{"host", "count"}
 	rows := [][]interface{}{
