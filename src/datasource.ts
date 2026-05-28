@@ -1,18 +1,26 @@
 import {
+  AdHocVariableFilter,
   CoreApp,
   DataQueryResponse,
   DataQueryRequest,
+  DataSourceGetTagValuesOptions,
   DataSourceInstanceSettings,
+  dateTime,
   LiveChannelScope,
+  LogRowContextOptions,
+  LogRowContextQueryDirection,
+  LogRowModel,
   MetricFindValue,
+  QueryFixAction,
   ScopedVars,
   SupplementaryQueryOptions,
   SupplementaryQueryType,
 } from '@grafana/data';
 import { DataSourceWithBackend, getGrafanaLiveSrv, getTemplateSrv } from '@grafana/runtime';
-import { Observable, merge } from 'rxjs';
+import { Observable, lastValueFrom, merge } from 'rxjs';
 
 import { annotationSupport } from './annotations';
+import { appendWhere, applyAdHocFilters, escapeValue, filterClause } from './queryFilters';
 
 import {
   DEFAULT_QUERY,
@@ -67,10 +75,11 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
     return streams.length > 0 ? merge(...streams) : super.query(request);
   }
 
-  applyTemplateVariables(query: LynxQuery, scopedVars: ScopedVars): LynxQuery {
+  applyTemplateVariables(query: LynxQuery, scopedVars: ScopedVars, filters?: AdHocVariableFilter[]): LynxQuery {
+    const interpolated = query.queryText ? getTemplateSrv().replace(query.queryText, scopedVars) : query.queryText;
     return {
       ...query,
-      queryText: query.queryText ? getTemplateSrv().replace(query.queryText, scopedVars) : query.queryText,
+      queryText: applyAdHocFilters(interpolated, filters) ?? query.queryText,
     };
   }
 
@@ -155,6 +164,90 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
     const field = valuesMatch ? valuesMatch[1].trim() : raw;
     const values = await this.getFieldValues(field, 1000);
     return values.map((v) => ({ text: String(v.value) }));
+  }
+
+  // --- Ad-hoc filters ------------------------------------------------------
+
+  // modifyQuery handles the add/exclude filter actions from the log details view.
+  modifyQuery(query: LynxQuery, action: QueryFixAction): LynxQuery {
+    const key = action.options?.key;
+    if (!key) {
+      return query;
+    }
+    const value = action.options?.value ?? '';
+
+    let clause: string | undefined;
+    if (action.type === 'ADD_FILTER') {
+      clause = filterClause(key, '=', value);
+    } else if (action.type === 'ADD_FILTER_OUT') {
+      clause = filterClause(key, '!=', value);
+    }
+    if (!clause) {
+      return query;
+    }
+    return { ...query, queryText: appendWhere(query.queryText, clause) };
+  }
+
+  // getTagKeys/getTagValues power dashboard ad-hoc filter controls.
+  async getTagKeys(): Promise<MetricFindValue[]> {
+    const fields = await this.getFields();
+    return fields.map((f) => ({ text: f.name }));
+  }
+
+  async getTagValues(options: DataSourceGetTagValuesOptions<LynxQuery>): Promise<MetricFindValue[]> {
+    const values = await this.getFieldValues(options.key, 1000);
+    return values.map((v) => ({ text: String(v.value) }));
+  }
+
+  // --- Log context ---------------------------------------------------------
+
+  // getLogRowContext returns the log lines surrounding a given row, scoped to the
+  // same source when one is present.
+  async getLogRowContext(
+    row: LogRowModel,
+    options?: LogRowContextOptions,
+    _query?: LynxQuery
+  ): Promise<DataQueryResponse> {
+    const limit = options?.limit ?? 50;
+    const windowMs = options?.timeWindowMs ?? 60 * 60 * 1000;
+    const forward = options?.direction === LogRowContextQueryDirection.Forward;
+    const fromMs = forward ? row.timeEpochMs : row.timeEpochMs - windowMs;
+    const toMs = forward ? row.timeEpochMs + windowMs : row.timeEpochMs;
+
+    const target = this.contextTarget(row, limit);
+    return lastValueFrom(super.query(this.contextRequest(target, fromMs, toMs, limit)));
+  }
+
+  // getLogRowContextQuery lets Grafana open the context in a split view.
+  async getLogRowContextQuery(row: LogRowModel, options?: LogRowContextOptions): Promise<LynxQuery | null> {
+    return this.contextTarget(row, options?.limit ?? 50);
+  }
+
+  private contextTarget(row: LogRowModel, limit: number): LynxQuery {
+    const source = row.labels?.['_source'] ?? row.labels?.['source'];
+    return {
+      refId: 'context',
+      queryText: source ? `_source="${escapeValue(source)}"` : '*',
+      queryType: 'logs',
+      maxLines: limit,
+    };
+  }
+
+  private contextRequest(target: LynxQuery, fromMs: number, toMs: number, limit: number): DataQueryRequest<LynxQuery> {
+    const from = dateTime(fromMs);
+    const to = dateTime(toMs);
+    return {
+      requestId: `lynx-context-${fromMs}-${toMs}`,
+      interval: '0',
+      intervalMs: 1,
+      range: { from, to, raw: { from, to } },
+      scopedVars: {},
+      targets: [target],
+      timezone: 'browser',
+      app: CoreApp.Explore,
+      startTime: fromMs,
+      maxDataPoints: limit,
+    } as DataQueryRequest<LynxQuery>;
   }
 }
 
