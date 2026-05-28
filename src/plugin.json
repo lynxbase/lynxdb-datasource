@@ -1,20 +1,22 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
-  "name": "Lynxdb",
+  "name": "LynxDB",
   "id": "lynxbase-lynxdb-datasource",
   "metrics": true,
+  "logs": true,
+  "streaming": true,
   "backend": true,
   "executable": "gpx_lynxdb",
   "info": {
-    "description": "",
+    "description": "Query and visualize LynxDB logs and metrics in Grafana using Lynx Flow and SPL2.",
     "author": {
       "name": "Lynxbase"
     },
     "keywords": ["datasource"],
     "logos": {
-      "small": "img/logo.svg",
-      "large": "img/logo.svg"
+      "small": "img/logo.png",
+      "large": "img/logo.png"
     },
     "links": [],
     "screenshots": [],

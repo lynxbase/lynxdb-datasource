@@ -1,45 +1,74 @@
-import React, { ChangeEvent } from 'react';
-import { InlineField, Input, Stack } from '@grafana/ui';
-import { QueryEditorProps } from '@grafana/data';
+import React, { ChangeEvent, useRef } from 'react';
+import { CodeEditor, InlineField, Input, Monaco, monacoTypes, RadioButtonGroup, Stack } from '@grafana/ui';
+import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
-import { MyDataSourceOptions, MyQuery } from '../types';
+import { LynxDataSourceOptions, LynxQuery, LynxQueryType } from '../types';
+import { LANG_ID, registerLynxLanguage, validateQuery } from '../lynxLanguage';
 
-type Props = QueryEditorProps<DataSource, MyQuery, MyDataSourceOptions>;
+type Props = QueryEditorProps<DataSource, LynxQuery, LynxDataSourceOptions>;
 
-export function QueryEditor({ query, onChange, onRunQuery }: Props) {
-  const onQueryTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, queryText: event.target.value });
-  };
+const QUERY_TYPES: Array<SelectableValue<LynxQueryType>> = [
+  { label: 'Logs', value: 'logs' },
+  { label: 'Metrics', value: 'metrics' },
+];
 
-  const onConstantChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...query, constant: parseFloat(event.target.value) });
-    // executes the query
+export function QueryEditor({ query, onChange, onRunQuery, datasource }: Props) {
+  const editorRef = useRef<monacoTypes.editor.IStandaloneCodeEditor>();
+  const monacoRef = useRef<Monaco>();
+
+  const onTypeChange = (value: LynxQueryType) => {
+    onChange({ ...query, queryType: value });
     onRunQuery();
   };
 
-  const { queryText, constant } = query;
+  const onMaxLinesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const raw = event.currentTarget.value;
+    onChange({ ...query, maxLines: raw === '' ? undefined : Number(raw) });
+  };
+
+  const handleMount = (editor: monacoTypes.editor.IStandaloneCodeEditor, monaco: Monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    registerLynxLanguage(monaco, datasource);
+  };
+
+  const handleBlur = (value: string) => {
+    onChange({ ...query, queryText: value });
+    if (monacoRef.current && editorRef.current) {
+      validateQuery(monacoRef.current, editorRef.current, datasource, value);
+    }
+    onRunQuery();
+  };
 
   return (
-    <Stack gap={0}>
-      <InlineField label="Constant">
-        <Input
-          id="query-editor-constant"
-          onChange={onConstantChange}
-          value={constant}
-          width={8}
-          type="number"
-          step="0.1"
-        />
-      </InlineField>
-      <InlineField label="Query Text" labelWidth={16} tooltip="Not used yet">
-        <Input
-          id="query-editor-query-text"
-          onChange={onQueryTextChange}
-          value={queryText || ''}
-          required
-          placeholder="Enter a query"
-        />
-      </InlineField>
+    <Stack direction="column" gap={1}>
+      <Stack gap={1} alignItems="center">
+        <InlineField label="Query type">
+          <RadioButtonGroup options={QUERY_TYPES} value={query.queryType ?? 'logs'} onChange={onTypeChange} />
+        </InlineField>
+        {query.queryType !== 'metrics' && (
+          <InlineField label="Max lines" tooltip="Maximum log lines to return">
+            <Input
+              type="number"
+              width={12}
+              value={query.maxLines ?? ''}
+              placeholder="1000"
+              onChange={onMaxLinesChange}
+            />
+          </InlineField>
+        )}
+      </Stack>
+      <CodeEditor
+        language={LANG_ID}
+        value={query.queryText || ''}
+        height={120}
+        showMiniMap={false}
+        showLineNumbers={false}
+        monacoOptions={{ scrollBeyondLastLine: false, fontSize: 13, wordWrap: 'on' }}
+        onEditorDidMount={handleMount}
+        onBlur={handleBlur}
+        onSave={handleBlur}
+      />
     </Stack>
   );
 }
