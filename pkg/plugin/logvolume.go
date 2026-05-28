@@ -16,11 +16,10 @@ import (
 // cannot filter). Results are grouped by the configured level field so Explore
 // renders stacked per-level bars.
 func (d *Datasource) queryLogVolume(ctx context.Context, qm queryModel, from, to string, interval time.Duration) backend.DataResponse {
-	q := strings.TrimSpace(qm.QueryText) + " | timechart count"
+	q := strings.TrimSpace(qm.QueryText) + " | timechart count() span=" + durationToSpan(interval)
 	if d.settings.LevelField != "" {
 		q += " by " + d.settings.LevelField
 	}
-	q += " span=" + durationToSpan(interval)
 
 	body := queryRequest{Q: q, From: from, To: to}
 
