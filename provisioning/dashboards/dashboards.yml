@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: LynxDB
+    type: file
+    disableDeletion: false
+    editable: true
+    allowUiUpdates: true
+    options:
+      # The plugin's bundled dashboards (dist is mounted into the plugin dir).
+      path: /var/lib/grafana/plugins/lynxbase-lynxdb-datasource/dashboards
+      foldersFromFilesStructure: false

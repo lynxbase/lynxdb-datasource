@@ -1,0 +1,161 @@
+{
+  "title": "LynxDB - Nginx Access Logs",
+  "uid": "lynxdb-nginx-access",
+  "tags": ["lynxdb", "nginx", "logs"],
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-7d", "to": "now" },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "LynxDB",
+        "type": "datasource",
+        "query": "lynxbase-lynxdb-datasource",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "textbox",
+        "query": "/var/log/app/nginx_access.log",
+        "current": { "text": "/var/log/app/nginx_access.log", "value": "/var/log/app/nginx_access.log" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total requests",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | stats count() as requests"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "4xx responses",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | eval s=tonumber(status) | where s>=400 and s<500 | stats count() as count_4xx"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "5xx responses",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | eval s=tonumber(status) | where s>=500 | stats count() as count_5xx"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Requests by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 4 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | timechart count() span=$__interval by status"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Requests by method",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "values": true }, "legend": { "displayMode": "list", "placement": "right" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | stats count() by method"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Bytes sent",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | eval b=tonumber(bytes) | timechart sum(b) as bytes span=$__interval"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Top URIs",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | parse combined(message) | top 15 uri"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Recent access logs",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "logs",
+          "queryText": "_source=\"$source\" | eval _raw=message"
+        }
+      ]
+    }
+  ]
+}

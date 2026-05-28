@@ -15,6 +15,9 @@ in Grafana using Lynx Flow / SPL2. This is a backend data source plugin
 - Annotation queries: log lines become dashboard annotations.
 - Template variables: `fields`, `sources`, and `values(<field>)`.
 - Secure bearer-token auth stored encrypted in `secureJsonData`.
+- Bundled dashboards for Nginx access logs and PostgreSQL (import from the
+  plugin's Dashboards tab). Each has a `$source` text variable to point at your
+  log source.
 
 ## Configuration
 

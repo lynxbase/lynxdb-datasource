@@ -1,0 +1,146 @@
+{
+  "title": "LynxDB - PostgreSQL",
+  "uid": "lynxdb-postgresql",
+  "tags": ["lynxdb", "postgresql", "logs"],
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-7d", "to": "now" },
+  "refresh": "",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "LynxDB",
+        "type": "datasource",
+        "query": "lynxbase-lynxdb-datasource",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "textbox",
+        "query": "/var/log/app/postgres.log",
+        "current": { "text": "/var/log/app/postgres.log", "value": "/var/log/app/postgres.log" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total log events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | stats count() as events"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Errors (ERROR/FATAL/PANIC)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | rex field=message \"\\] (?P<level>[A-Z]+):\" | where level=\"ERROR\" or level=\"FATAL\" or level=\"PANIC\" | stats count() as errors"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Slow queries (>1s)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | rex field=message \"duration: (?P<d>[0-9.]+) ms\" | eval dn=tonumber(d) | where dn>1000 | stats count() as slow"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Events by level",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | rex field=message \"\\] (?P<level>[A-Z]+):\" | timechart count() span=$__interval by level"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Query duration (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "metrics",
+          "queryText": "_source=\"$source\" | rex field=message \"duration: (?P<d>[0-9.]+) ms\" | eval dn=tonumber(d) | timechart avg(dn) as avg_ms, max(dn) as max_ms span=$__interval"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Recent errors",
+      "type": "logs",
+      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "logs",
+          "queryText": "_source=\"$source\" | rex field=message \"\\] (?P<level>[A-Z]+):\" | where level=\"ERROR\" or level=\"FATAL\" or level=\"PANIC\" | eval _raw=message"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Slow queries",
+      "type": "logs",
+      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+      "options": { "showTime": true, "wrapLogMessage": true, "enableLogDetails": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "lynxbase-lynxdb-datasource", "uid": "${datasource}" },
+          "queryType": "logs",
+          "queryText": "_source=\"$source\" | rex field=message \"duration: (?P<d>[0-9.]+) ms\" | eval dn=tonumber(d) | where dn>1000 | eval _raw=message"
+        }
+      ]
+    }
+  ]
+}

@@ -33,6 +33,18 @@
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },
+  "includes": [
+    {
+      "type": "dashboard",
+      "name": "Nginx Access Logs",
+      "path": "dashboards/nginx-access.json"
+    },
+    {
+      "type": "dashboard",
+      "name": "PostgreSQL",
+      "path": "dashboards/postgresql.json"
+    }
+  ],
   "dependencies": {
     "grafanaDependency": ">=12.3.0",
     "plugins": []
