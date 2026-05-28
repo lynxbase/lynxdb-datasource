@@ -12,6 +12,8 @@ import {
 import { DataSourceWithBackend, getGrafanaLiveSrv, getTemplateSrv } from '@grafana/runtime';
 import { Observable, merge } from 'rxjs';
 
+import { annotationSupport } from './annotations';
+
 import {
   DEFAULT_QUERY,
   ExplainResult,
@@ -26,6 +28,7 @@ import {
 export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceOptions> {
   constructor(instanceSettings: DataSourceInstanceSettings<LynxDataSourceOptions>) {
     super(instanceSettings);
+    this.annotations = annotationSupport;
   }
 
   getDefaultQuery(_: CoreApp): Partial<LynxQuery> {
