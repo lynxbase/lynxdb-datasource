@@ -32,17 +32,6 @@ export interface LynxSecureJsonData {
   token?: string;
 }
 
-export type LynxVariableQueryType = 'fields' | 'sources' | 'fieldValues';
-
-export interface LynxVariableQuery {
-  type: LynxVariableQueryType;
-  field?: string;
-}
-
-export const DEFAULT_VARIABLE_QUERY: LynxVariableQuery = {
-  type: 'fields',
-};
-
 /** Shapes returned by the backend resource endpoints (autocomplete/validation). */
 export interface FieldInfo {
   name: string;

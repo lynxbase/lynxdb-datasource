@@ -2,6 +2,7 @@ import {
   CoreApp,
   DataQueryRequest,
   DataSourceInstanceSettings,
+  MetricFindValue,
   ScopedVars,
   SupplementaryQueryOptions,
   SupplementaryQueryType,
@@ -91,5 +92,30 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
 
   async explain(queryText: string): Promise<ExplainResult> {
     return this.getResource('explain', { q: queryText });
+  }
+
+  // --- Template variables --------------------------------------------------
+
+  // metricFindQuery powers query variables. Supported queries:
+  //   fields           -> all field names
+  //   sources          -> all source names
+  //   values(<field>)  -> distinct values of a field
+  // A bare field name is treated as values(<field>).
+  async metricFindQuery(query: string): Promise<MetricFindValue[]> {
+    const raw = getTemplateSrv().replace(query ?? '').trim();
+
+    if (raw === '' || raw === 'fields') {
+      const fields = await this.getFields();
+      return fields.map((f) => ({ text: f.name }));
+    }
+    if (raw === 'sources') {
+      const sources = await this.getSources();
+      return sources.map((s) => ({ text: s.name }));
+    }
+
+    const valuesMatch = raw.match(/^values\(([^)]+)\)$/);
+    const field = valuesMatch ? valuesMatch[1].trim() : raw;
+    const values = await this.getFieldValues(field, 1000);
+    return values.map((v) => ({ text: String(v.value) }));
   }
 }
