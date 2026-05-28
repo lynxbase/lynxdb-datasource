@@ -6,6 +6,7 @@
   "metrics": true,
   "logs": true,
   "streaming": true,
+  "alerting": true,
   "backend": true,
   "executable": "gpx_lynxdb",
   "info": {
@@ -13,12 +14,21 @@
     "author": {
       "name": "Lynxbase"
     },
-    "keywords": ["datasource"],
+    "keywords": ["datasource", "logs", "lynxdb", "observability", "spl2"],
     "logos": {
       "small": "img/logo.png",
       "large": "img/logo.png"
     },
-    "links": [],
+    "links": [
+      {
+        "name": "LynxDB",
+        "url": "https://github.com/lynxbase/lynxdb"
+      },
+      {
+        "name": "Documentation",
+        "url": "https://github.com/lynxbase/lynxdb/tree/main/docs"
+      }
+    ],
     "screenshots": [],
     "version": "%VERSION%",
     "updated": "%TODAY%"

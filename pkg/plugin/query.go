@@ -64,7 +64,24 @@ func (d *Datasource) query(ctx context.Context, q backend.DataQuery) backend.Dat
 		return backend.ErrDataResponse(backend.StatusBadRequest, env.Error.Error())
 	}
 
-	return d.frameFromQueryData(qm, env.Data)
+	resp := d.frameFromQueryData(qm, env.Data)
+	attachNotices(&resp, env.Meta.Lints)
+
+	return resp
+}
+
+// attachNotices surfaces advisory query lints on the first frame so Grafana
+// shows them on the panel.
+func attachNotices(resp *backend.DataResponse, lints []queryLint) {
+	notices := lintsToNotices(lints)
+	if len(notices) == 0 || len(resp.Frames) == 0 {
+		return
+	}
+	frame := resp.Frames[0]
+	if frame.Meta == nil {
+		frame.Meta = &data.FrameMeta{}
+	}
+	frame.Meta.Notices = notices
 }
 
 // frameFromQueryData converts a LynxDB query result into a Grafana data frame

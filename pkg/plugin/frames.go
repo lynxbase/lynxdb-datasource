@@ -3,10 +3,38 @@ package plugin
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 )
+
+// lintsToNotices converts LynxDB advisory lints into Grafana panel notices.
+func lintsToNotices(lints []queryLint) []data.Notice {
+	if len(lints) == 0 {
+		return nil
+	}
+	notices := make([]data.Notice, 0, len(lints))
+	for _, l := range lints {
+		text := l.Message
+		if l.Code != "" {
+			text = l.Code + ": " + text
+		}
+		notices = append(notices, data.Notice{Severity: noticeSeverity(l.Severity), Text: text})
+	}
+	return notices
+}
+
+func noticeSeverity(s string) data.NoticeSeverity {
+	switch strings.ToLower(s) {
+	case "error":
+		return data.NoticeSeverityError
+	case "warning", "warn":
+		return data.NoticeSeverityWarning
+	default:
+		return data.NoticeSeverityInfo
+	}
+}
 
 // eventsToFrame builds a Grafana log-lines frame from LynxDB events.
 // The configured time/message/level fields drive the required log columns; all

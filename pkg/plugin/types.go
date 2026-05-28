@@ -31,7 +31,22 @@ func (e *apiError) Error() string {
 // queryEnvelope is the {data, meta, error} wrapper for POST /api/v1/query.
 type queryEnvelope struct {
 	Data  queryData `json:"data"`
+	Meta  respMeta  `json:"meta"`
 	Error *apiError `json:"error"`
+}
+
+// respMeta carries the advisory metadata used by the plugin.
+type respMeta struct {
+	Lints []queryLint `json:"lints"`
+}
+
+// queryLint is an advisory query warning returned by LynxDB.
+type queryLint struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Reason   string `json:"reason"`
+	Severity string `json:"severity"`
+	Position int    `json:"position"`
 }
 
 // queryData is the polymorphic data payload of a query response.

@@ -3,51 +3,99 @@ import type { DataSource } from './datasource';
 
 export const LANG_ID = 'lynxflow';
 
-// Lynx Flow / SPL2 pipeline commands and clause keywords.
+// Lynx Flow / SPL2 pipeline commands and clause keywords (from `lynxdb grammar ebnf`).
 const COMMANDS = [
   'from',
+  'index',
   'search',
   'where',
+  'stats',
   'eval',
-  'parse',
-  'fields',
-  'rename',
-  'dedup',
   'sort',
   'head',
   'tail',
+  'reverse',
+  'table',
+  'fields',
+  'rename',
+  'dedup',
+  'rex',
+  'regex',
+  'replace',
+  'bin',
+  'timechart',
   'top',
   'rare',
-  'stats',
-  'timechart',
-  'group',
-  'by',
+  'fillnull',
+  'streamstats',
+  'eventstats',
   'join',
+  'append',
+  'union',
+  'transaction',
+  'mvexpand',
+  'makeresults',
+  'parse',
   'lookup',
-  'table',
-  'bin',
+  'percentiles',
+  'rank',
+  'bottom',
+  'by',
+  'as',
+  'with',
+  'in',
   'span',
-  'limit',
-  'count',
-  'sum',
-  'avg',
-  'min',
-  'max',
-  'distinct_count',
   'and',
   'or',
   'not',
+];
+
+// Aggregation functions usable in stats/timechart (from `lynxdb grammar ebnf`).
+const FUNCTIONS = [
+  'count',
+  'sum',
+  'sumsq',
+  'avg',
+  'mean',
+  'min',
+  'max',
+  'dc',
+  'distinct_count',
+  'estdc',
+  'values',
+  'list',
+  'mode',
+  'first',
+  'last',
+  'stdev',
+  'stdevp',
+  'var',
+  'varp',
+  'range',
+  'median',
+  'perc',
+  'percentile',
+  'earliest',
+  'latest',
+  'rate',
+  'per_second',
+  'per_minute',
+  'per_hour',
+  'per_day',
 ];
 
 const monarch: monacoTypes.languages.IMonarchLanguage = {
   defaultToken: '',
   ignoreCase: true,
   keywords: COMMANDS,
-  operators: ['=', '!=', '<', '>', '<=', '>=', '|', '+', '-', '*', '/'],
+  functions: FUNCTIONS,
   tokenizer: {
     root: [
       [/\|/, 'operator'],
-      [/[a-zA-Z_][\w.]*/, { cases: { '@keywords': 'keyword', '@default': 'identifier' } }],
+      [
+        /[a-zA-Z_][\w.]*/,
+        { cases: { '@keywords': 'keyword', '@functions': 'predefined', '@default': 'identifier' } },
+      ],
       [/"([^"\\]|\\.)*"/, 'string'],
       [/'([^'\\]|\\.)*'/, 'string'],
       [/\d+(\.\d+)?/, 'number'],
@@ -97,12 +145,20 @@ export function registerLynxLanguage(monaco: Monaco, datasource: DataSource) {
         endColumn: word.endColumn,
       };
 
-      const suggestions: monacoTypes.languages.CompletionItem[] = COMMANDS.map((kw) => ({
-        label: kw,
-        kind: monaco.languages.CompletionItemKind.Keyword,
-        insertText: kw,
-        range,
-      }));
+      const suggestions: monacoTypes.languages.CompletionItem[] = [];
+
+      for (const kw of COMMANDS) {
+        suggestions.push({ label: kw, kind: monaco.languages.CompletionItemKind.Keyword, insertText: kw, range });
+      }
+      for (const fn of FUNCTIONS) {
+        suggestions.push({
+          label: `${fn}()`,
+          kind: monaco.languages.CompletionItemKind.Function,
+          insertText: `${fn}($0)`,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+        });
+      }
 
       const ds = activeDatasource;
       if (ds) {
