@@ -1,14 +1,19 @@
 apiVersion: 1
 
 datasources:
-  - name: 'lynxdb'
-    type: 'lynxbase-lynxdb-datasource'
+  - name: LynxDB
+    type: lynxbase-lynxdb-datasource
     access: proxy
     isDefault: false
     orgId: 1
     version: 1
     editable: true
+    # From a Grafana container, the host's LynxDB is reachable here on macOS.
+    url: http://host.docker.internal:3100
     jsonData:
-      path: '/resources'
+      timeField: _time
+      messageField: _raw
+      levelField: level
+      maxLines: 1000
     secureJsonData:
-      apiKey: 'api-key'
+      token: ''
