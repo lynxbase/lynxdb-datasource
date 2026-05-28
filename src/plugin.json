@@ -5,6 +5,7 @@
   "id": "lynxbase-lynxdb-datasource",
   "metrics": true,
   "logs": true,
+  "streaming": true,
   "backend": true,
   "executable": "gpx_lynxdb",
   "info": {

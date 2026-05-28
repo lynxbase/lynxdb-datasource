@@ -1,13 +1,16 @@
 import {
   CoreApp,
+  DataQueryResponse,
   DataQueryRequest,
   DataSourceInstanceSettings,
+  LiveChannelScope,
   MetricFindValue,
   ScopedVars,
   SupplementaryQueryOptions,
   SupplementaryQueryType,
 } from '@grafana/data';
-import { DataSourceWithBackend, getTemplateSrv } from '@grafana/runtime';
+import { DataSourceWithBackend, getGrafanaLiveSrv, getTemplateSrv } from '@grafana/runtime';
+import { Observable, merge } from 'rxjs';
 
 import {
   DEFAULT_QUERY,
@@ -27,6 +30,38 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
 
   getDefaultQuery(_: CoreApp): Partial<LynxQuery> {
     return DEFAULT_QUERY;
+  }
+
+  // query routes Explore live-tail requests to a Grafana Live stream backed by
+  // the plugin RunStream handler; everything else uses the standard backend query.
+  query(request: DataQueryRequest<LynxQuery>): Observable<DataQueryResponse> {
+    if (request.liveStreaming) {
+      return this.tailQuery(request);
+    }
+    return super.query(request);
+  }
+
+  private tailQuery(request: DataQueryRequest<LynxQuery>): Observable<DataQueryResponse> {
+    const live = getGrafanaLiveSrv();
+    if (!live) {
+      return super.query(request);
+    }
+
+    const streams = request.targets
+      .filter((target) => this.filterQuery(target))
+      .map((target) => {
+        const q = this.applyTemplateVariables(target, request.scopedVars);
+        return live.getDataStream({
+          addr: {
+            scope: LiveChannelScope.DataSource,
+            stream: this.uid,
+            path: `tail/${target.refId}/${hashQuery(q.queryText)}`,
+            data: { queryText: q.queryText, queryType: q.queryType, maxLines: q.maxLines },
+          },
+        });
+      });
+
+    return streams.length > 0 ? merge(...streams) : super.query(request);
   }
 
   applyTemplateVariables(query: LynxQuery, scopedVars: ScopedVars): LynxQuery {
@@ -118,4 +153,14 @@ export class DataSource extends DataSourceWithBackend<LynxQuery, LynxDataSourceO
     const values = await this.getFieldValues(field, 1000);
     return values.map((v) => ({ text: String(v.value) }));
   }
+}
+
+// hashQuery produces a short channel-path-safe token so distinct queries on the
+// same refId get distinct live channels.
+function hashQuery(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash * 33 + text.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
 }
